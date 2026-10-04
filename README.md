@@ -1,251 +1,263 @@
 # AI_WorkingPipeline
 
-一套给 **Claude Code** 用的项目工作框架。它从需求收集（intake）开始，经过任务分配、开发、审查、测试、安全检查，一直到进度记录，整条流程都是自动化的。
+**English** · [简体中文](README.zh-CN.md)
+
+A project framework for **Claude Code** that automates the whole delivery path: intake, task
+allocation, coding, review, testing, a final security check, and progress recording.
 
 ```
-第一次：  /Start  ──►  Start.md（锁定）──►  Project.md · TechnicalSpec.md · DatabaseSchema.md · Codebase.md
-之后：    /Commander <任务>  ──►  每个单元跑一次 /AutomateWorkflow：
-          plan ─► 🛑 你批准（在对话里，或在 GitHub 上）─► code ─► review ─► test ─► security ─► 记录进度 ─► commit ─► 🛑 问你要不要 push
+First run:   /Start  ──►  Start.md (locked)  ──►  Project.md · TechnicalSpec.md · DatabaseSchema.md · Codebase.md
+Every task:  /Commander <task>  ──►  /AutomateWorkflow for each unit:
+             plan ─► 🛑 you approve (chat or GitHub) ─► code ─► review ─► test ─► security ─► record progress ─► commit ─► 🛑 asks before pushing
 ```
 
 ---
 
-## 目录
+## Contents
 
-1. [需要准备什么](#1-需要准备什么)
-2. [快速开始](#2-快速开始)
-3. [第一次：`/Start`（强制）](#3-第一次start强制)
-4. [日常：`/Commander`](#4-日常commander)
-5. [一个任务的完整流程：`/AutomateWorkflow`](#5-一个任务的完整流程automateworkflow)
-6. [进度记录是怎么保证的](#6-进度记录是怎么保证的)
-7. [文件说明](#7-文件说明)
+1. [Requirements](#1-requirements)
+2. [Quick start](#2-quick-start)
+3. [First run: `/Start` (mandatory)](#3-first-run-start-mandatory)
+4. [Every task: `/Commander`](#4-every-task-commander)
+5. [One unit of work: `/AutomateWorkflow`](#5-one-unit-of-work-automateworkflow)
+6. [How progress recording is enforced](#6-how-progress-recording-is-enforced)
+7. [The documents](#7-the-documents)
 8. [Agents · Skills · Hooks](#8-agents--skills--hooks)
-9. [配置](#9-配置-claudepipelineconfigjson)
-10. [常见问题](#10-常见问题)
+9. [Configuration](#9-configuration-claudepipelineconfigjson)
+10. [FAQ](#10-faq)
 
 ---
 
-## 1. 需要准备什么
+## 1. Requirements
 
-| 工具 | 用途 | 检查 |
-|------|------|------|
-| [Claude Code](https://claude.com/claude-code) | 执行整套流程 | `claude --version` |
-| Git | 分支、worktree、commit | `git --version` |
-| Node.js 18 以上 | 跑 hooks 和 `commander.mjs` | `node -v` |
-| GitHub CLI（已登入） | 开 issue、贴 plan、读取你的批准 | `gh auth status` |
-| 项目本身的工具链 | 例如 `mvn`、`npm` 或 `ruff`，quality-gate 会自动侦测 | — |
+| Tool | Used for | Check |
+|------|----------|-------|
+| [Claude Code](https://claude.com/claude-code) | Runs the whole pipeline | `claude --version` |
+| Git | Branches, worktrees, commits | `git --version` |
+| Node.js 18 or newer | Hooks and `commander.mjs` | `node -v` |
+| GitHub CLI, logged in | Opening issues, posting plans, reading your approval | `gh auth status` |
+| Your project's own toolchain | e.g. `mvn`, `npm`, `ruff`; the quality gate detects it | — |
 
-> Token 永远不要写进任何文件。`gh` 登入后，凭证存在系统的 keyring 里。
+> Never put a token in any file. Once `gh` is logged in, its credentials live in the system keyring.
 
-## 2. 快速开始
+## 2. Quick start
 
-### 新项目（推荐做法）
+### A new project (recommended)
 ```bash
 gh repo create my-app --template Carlo0919/AI_WorkingPipeline --private --clone
 cd my-app
 claude
 ```
-开启后，随便输入一句话，`/Start` 就会自动开始。
+Type anything, and `/Start` begins.
 
-> ⚠️ 如果你是用 `git clone` 直接复制这个 repo，`origin` 仍然指向模板 repo，这时 start-gate 会以为自己在模板里而保持沉默。请先把 `origin` 改成你自己的 repo：`git remote set-url origin <你的 repo>`。
+> ⚠️ If you `git clone` this repo directly, `origin` still points at the template, so the start
+> gate assumes it's inside the template and stays silent. Point `origin` at your own repo first:
+> `git remote set-url origin <your-repo>`.
 
-### 已有项目
+### An existing project
 ```bash
-node /path/to/AI_WorkingPipeline/install.mjs /path/to/your-project --dry   # 先看会复制哪些文件
-node /path/to/AI_WorkingPipeline/install.mjs /path/to/your-project         # 只复制不存在的文件，绝不覆盖
+node /path/to/AI_WorkingPipeline/install.mjs /path/to/your-project --dry   # preview what will be copied
+node /path/to/AI_WorkingPipeline/install.mjs /path/to/your-project         # copies only missing files, never overwrites
 ```
-已经存在的文件（例如你原本的 `CLAUDE.md`）会被跳过，并列出来让你手动合并。
+Files that already exist (for example your own `CLAUDE.md`) are skipped and listed, so you can merge them by hand.
 
 ---
 
-## 3. 第一次：`/Start`（强制）
+## 3. First run: `/Start` (mandatory)
 
-**只要 `Start.md` 里的 `Intake status` 还不是 `✅ LOCKED`，你发出的每一句话都会先被 `start-gate` hook 拦下，要求先跑 `/Start`。** 锁定以后就再也不会强制了。
+**Until `Start.md` says `Intake status: ✅ LOCKED`, the `start-gate` hook intercepts every message
+and makes `/Start` the first thing that happens.** Once the intake is locked, it's never required again.
 
-`/Start` 的步骤：
+What `/Start` does:
 
-1. **请你描述项目。** 你的原话会**一字不改**地记进 `Start.md` §1。锁定之后这段永远不会被修改。
-2. **对照检查表 A–P**，先从你的描述里找答案，标注来源为 `original`。
-3. **只追问缺少的部分**，每轮最多 4 题。选择题用选项让你点，开放题让你自由回答：
+1. **Asks you to describe the project.** Your words are recorded **verbatim** in `Start.md` §1, and that section is never edited after locking.
+2. **Maps your description onto checklist rows A–P**, marking each answer it found with the source `original`.
+3. **Asks only for what's missing**, at most 4 questions per round. Closed questions come as options to click; open ones as free text:
 
-   | # | 问什么 | # | 问什么 |
-   |---|--------|---|--------|
-   | A | 这个项目是什么、属于哪种类型 | I | 存什么数据、敏感程度、法规 |
-   | B | 目标和成功指标（要有数字） | J | 平台（web、mobile、desktop、只有 API、需不需要离线） |
-   | C | 目标用户 | K | **Tech stack** |
-   | D | 角色：能做什么、能看什么、绝对不能看什么 | L | 部署在哪里、预算 |
-   | E | Domains：网站和子网域，以及业务领域（module） | M | 时间线 |
-   | F | **流量等级**：高、中、低，以及具体数字 | N | 团队 |
-   | G | 核心功能 | O | 不做的范围 |
-   | H | 外部服务：支付、邮件、SMS、AI、地图等 | P | 最大的风险 |
+   | # | Topic | # | Topic |
+   |---|-------|---|-------|
+   | A | What it is, and what kind of project | I | Data stored, sensitivity, legal constraints |
+   | B | Goal and success metric (a number) | J | Platforms: web, mobile, desktop, API only, offline |
+   | C | Target users | K | **Tech stack** |
+   | D | Roles: what each can do, see, and must never see | L | Hosting and budget |
+   | E | Domains: web surfaces and business domains (modules) | M | Timeline |
+   | F | **Traffic tier**: high, medium, or low, with numbers | N | Team |
+   | G | Core features | O | Out of scope |
+   | H | Integrations: payments, email, SMS, AI, maps… | P | Biggest risk |
 
-   - **流量等级**会问你"平常和最忙的时候，同时有多少人在用"，然后套用 `Start.md` §3 的定义：
-     - **Low**：< 50 人同时在线，或每天 < 1 万个请求。
-     - **Medium**：50–1000 人，或每天 1 万–100 万个请求。
-     - **High**：> 1000 人，或每天 > 100 万个请求，或流量会突然暴增。
+   - **Traffic tier:** it asks how many people use the system at the same moment, on a normal day and on the busiest day, then applies the definitions in `Start.md` §3:
+     - **Low:** under 50 concurrent users, or under 10k requests/day.
+     - **Medium:** 50–1,000 concurrent users, or 10k–1M requests/day.
+     - **High:** over 1,000 concurrent users, over 1M requests/day, or sharp traffic spikes.
 
-     这个等级直接决定 `TechnicalSpec.md` 里的 server 规模，以及要不要上 cache 或 queue。
-   - **Tech stack 一定会问。** 如果你答不出来、说"随便"或"你决定"，Claude 会用 `skills/stack-selection` 根据你前面的答案**自动推荐整套 stack**，依据包括团队经验、平台、流量、功能、外部服务、预算，每一项都附上理由。如果你只指定了一部分（例如"我要用 React"），那部分会保留，其余由 Claude 补齐。
-4. **给你一份完整摘要**，回复 `yes` 就锁定。如果 stack 是自动推荐的，你回 `yes` 就等于采用，不会再多一轮审批。
-5. **自动写好所有文档：**
-   - `Start.md`：标为 LOCKED；
-   - `Project.md`：定义、用户、domains、角色矩阵、mechanisms、时间线、待解决问题、第一行进度记录；
-   - `TechnicalSpec.md`：stack 和依流量等级算出的 server 规模；
-   - `DatabaseSchema.md`：草稿版的 entities；
-   - 另外还会填好 `CLAUDE.md` 的占位符、`pipeline.config.json`，并准备好 stack skill。
-6. 在 GitHub 开一个 kickoff issue，commit，然后**问你**要不要 push。
+     The tier sets the server sizing in `TechnicalSpec.md`, and decides whether a cache or queue is needed.
+   - **The tech stack is always asked about.** If you can't answer, or say "anything" or "you decide", Claude uses `skills/stack-selection` to **recommend a complete stack** from your earlier answers (team experience, platforms, traffic, features, integrations, budget), with a one-line reason for each piece. If you fix only part of it (say, "I want React"), that part stays and Claude fills in the rest.
+4. **Shows you a full summary.** Reply `yes` to lock it. If the stack was auto-recommended, your `yes` adopts it; there's no separate approval round.
+5. **Writes all the docs:**
+   - `Start.md`: marked LOCKED;
+   - `Project.md`: definition, users, domains, the role matrix, mechanisms, timeline, open questions, and the first progress-log row;
+   - `TechnicalSpec.md`: the stack, plus server sizing from the traffic tier;
+   - `DatabaseSchema.md`: draft entities;
+   - it also fills the `CLAUDE.md` placeholders and `pipeline.config.json`, and sets up the stack skill.
+6. Opens a kickoff issue on GitHub, commits, and **asks** before pushing.
 
-之后如果项目方向有重大改变（新的用户类型、新的产品方向），可以再跑一次 `/Start`。它会进入 **addendum 模式**：只问有变化的部分，把新内容追加到 `Start.md` §6，原始描述不动。
+If the project later changes direction in a major way (a new user type, a new product direction),
+run `/Start` again. It enters **addendum mode**: it asks only about what changed, appends the new
+material to `Start.md` §6, and leaves the original description untouched.
 
 ---
 
-## 4. 日常：`/Commander`
+## 4. Every task: `/Commander`
 
-**有任务就打 `/Commander <你的任务>`。** Commander 在主对话里运行，因为 subagent 不能再叫出其他 agent。它的原则是**用最少的 agent 和 worktree 把事情做完**，以节省 token 和资源。
+**Whenever you have a task, type `/Commander <your task>`.** Commander runs in the main session,
+because a subagent can't launch other agents. Its rule is to **finish the job with the fewest
+agents and worktrees**, which saves tokens and resources.
 
-1. **看现况。** `commander.mjs status` 会列出所有任务、各自的阶段、负责的 agent、所在的 worktree、跟 base branch 差几个 commit、改了几个文件，以及有没有冲突。
-2. **分析任务**，用最便宜但足够的方式：
-   - 很小的改动：Commander 自己读一两个文件就处理。
-   - 功能类或不清楚的 bug：交给 planner 的 TRIAGE 模式，整个请求只调用一次。
-   - "帮我检查这段 code"：交给 reviewer 的检查模式。
-3. **决定分配：**
+1. **Checks the current state.** `commander.mjs status` lists every task: its stage, the agent on it, its worktree, how far it is ahead of or behind the base branch, how many files it has changed, and any conflicts.
+2. **Inspects the request**, using the cheapest method that's enough:
+   - A tiny change: Commander reads one or two files and handles it itself.
+   - A feature, or a bug with an unclear cause: the planner's TRIAGE mode, one call for the whole request.
+   - "Check this code for me": the reviewer's inspection mode.
+3. **Decides the allocation:**
 
-   | 情况 | 分配 |
-   |------|------|
-   | 只有 1 个单元 | 直接在主目录做，0 个 worktree |
-   | 几个小（S）单元 | 在主目录依序做 |
-   | 2–3 个**独立的** M/L 单元，在不同 module、改的路径不重叠 | 每个单元一个 worktree，最多 `maxWorktrees` 个 |
-   | 同一个 module 的多个单元 | 同一个 worktree，依序做 |
+   | Situation | Allocation |
+   |-----------|------------|
+   | 1 unit | Work directly in the main checkout, 0 worktrees |
+   | Several small (S) units | Main checkout, one after another |
+   | 2–3 **independent** M/L units in different modules, with non-overlapping paths | One worktree each, up to `maxWorktrees` |
+   | Several units in the same module | One worktree, one after another |
 
-   | 单元大小 | 派哪些 agent |
-   |----------|--------------|
-   | S | coder → reviewer。行为有变就加 tester；碰到 endpoint、输入、config、依赖或日志就加 security |
+   | Unit size | Agents |
+   |-----------|--------|
+   | S | coder → reviewer. Add tester if behaviour changes; add security if it touches an endpoint, input, config, dependency, or logging |
    | M / L | planner → coder → reviewer → tester → security-reviewer |
-4. **为每个单元开一个 GitHub issue 并贴上 plan**，然后给你一张分配表，让你选择批准哪些单元。
-5. **派工和追踪。** 每个 worktree 有自己的分支、DB、port。每到一个新阶段就跑一次 `commander.mjs check`，它会比对每个单元**实际改了**哪些文件：
-   - `CLAIM`：两个单元登记的路径重叠；
-   - `SHARED`：两个单元抢同一个共用文件；
-   - `UNCLAIMED`：改了共用文件却没登记；
-   - `OUTSIDE`：改到登记范围以外；
-   - `ORPHAN`：有 worktree 但不在登记表上。
-6. **merge 和记录。** 在你同意 push 之后，Commander 一次 merge 一个单元回 base branch，跑完整测试，再统一写进度记录。这样多个 worktree 不会在 `Project.md` 上冲突。
+4. **Opens one GitHub issue per unit and posts its plan**, then shows you an allocation table so you can choose which units to approve.
+5. **Dispatches and tracks.** Each worktree gets its own branch, database, and port. At every stage change, `commander.mjs check` compares the files each unit has **actually** changed:
+   - `CLAIM`: two units' claimed paths overlap;
+   - `SHARED`: two units claim the same shared file;
+   - `UNCLAIMED`: a unit changed a shared file without claiming it;
+   - `OUTSIDE`: a unit changed files outside its claims;
+   - `ORPHAN`: a worktree exists that isn't on the board.
+6. **Merges and records.** After you approve the push, Commander merges one unit at a time back into the base branch, runs the full test suite, and only then writes the progress record. That way, parallel worktrees never conflict over `Project.md`.
 
-`/Commander status` 可以随时查看登记表。
-
----
-
-## 5. 一个任务的完整流程：`/AutomateWorkflow`
-
-| 步骤 | 做什么 | 由谁做 |
-|------|--------|--------|
-| 0 | 开分支 `{type}/{title}`，或进入 Commander 分配的 worktree | — |
-| 1 | `gh issue create`，标题格式为 `[CATEGORY] -> 标题 -> 简述` | — |
-| 2 | 写 plan，贴到 issue | planner |
-| 3 | 🛑 **你批准**：在对话里回 `yes`，或在 issue 留言 `/approve`、加上 `approved` label。只认 `approvers` 里的账号。 | **你** |
-| 4 | 写 code。Orchestrator 会**亲自读 diff**；资料结构有变就同时更新 DatabaseSchema.md | coder |
-| 5 | Review，有问题就退回第 4 步 | reviewer |
-| 6 | 写 unit test，发现 bug 就退回第 4 步 | tester |
-| 7 | 安全检查（最后一关），对照 S1–S15 | security-reviewer |
-| 8 | 跑性能对比（有影响时才跑） | — |
-| 9 | **记录进度和文档**，然后 commit | hooks 会检查 |
-| 10 | 🛑 问你要不要 push 和 merge | **你** |
-
-小改动可以跳过完整 plan、测试和性能对比，但**碰到 endpoint、输入、config、依赖或权限的改动，一定要过 security 检查**。
+Run `/Commander status` at any time to see the board.
 
 ---
 
-## 6. 进度记录是怎么保证的
+## 5. One unit of work: `/AutomateWorkflow`
 
-| 机制 | 什么时候触发 | 做什么 |
-|------|-------------|--------|
-| `/AutomateWorkflow` Step 9 | 每个单元结束前 | 先写 `Project.md` §8 的进度记录和相关文档，再 commit |
-| `record-progress` hook | 每次 `git commit` 或 `git merge` 之后 | 如果这个 commit 没改到 `Project.md`，就提醒 Claude 补上。可以用 `Progress: skip — <原因>` 明确跳过。在 worktree 里的 commit 不检查，由 Commander 在 merge 时统一记录。 |
-| `uncommitted-check` hook | 每次 Claude 准备结束一轮工作时 | 如果还有没 commit 的改动、也没写进度记录，就要求 Claude 说清楚：是要记录、还在进行中，还是不需要记录。同一批改动只提醒一次。 |
+| Step | What happens | Who |
+|------|--------------|-----|
+| 0 | Create a `{type}/{title}` branch, or enter the worktree Commander assigned | — |
+| 1 | `gh issue create`, titled `[CATEGORY] -> Title -> Short description` | — |
+| 2 | Write the plan and post it on the issue | planner |
+| 3 | 🛑 **You approve**: reply `yes` in chat, or comment `/approve` on the issue, or add the `approved` label. Only accounts listed in `approvers` count. | **you** |
+| 4 | Write the code. The orchestrator **reads the diff itself**; if the data shape changed, DatabaseSchema.md changes in the same diff | coder |
+| 5 | Review; problems go back to step 4 | reviewer |
+| 6 | Unit tests; a bug goes back to step 4 | tester |
+| 7 | Security check, the last gate, against S1–S15 | security-reviewer |
+| 8 | Benchmark before and after (only when performance could change) | — |
+| 9 | **Record progress and update the docs**, then commit | hooks check it |
+| 10 | 🛑 Asks whether to push and merge | **you** |
+
+Small changes can skip the full plan, the tests, and the benchmark. But **anything touching an
+endpoint, input, config, a dependency, or permissions always goes through the security check**.
 
 ---
 
-## 7. 文件说明
+## 6. How progress recording is enforced
 
-| 文件 | 内容 | 谁写 |
-|------|------|------|
-| `Start.md` | 用户最初的描述（原文）、检查表、问答记录、确认过的摘要。**锁定后不改**，只能追加 addendum。 | `/Start` |
-| `Project.md` | 定义、目标、用户、范围、流量等级、domains 和 modules 的数量、角色（功能、用途、资产、权限）、mechanisms、时间线、决策、待解决问题、**进度记录** | `/Start` 写初版，之后每个流程更新 |
-| `TechnicalSpec.md` | 从高位到低位的设计：架构、所有组件和版本、npm 等套件、workers 和 pools、server 规模、caching、环境 | `/Start` 写初版，之后每个 mechanism 补充 |
-| `DatabaseSchema.md` | ERD（mermaid）、每个 table 的 metadata、关系、作用、PII 分类、保留期限 | coder 和资料改动同一个 commit |
-| `Codebase.md` | **实测**的状态：安全措施（rate limit、输入验证、IP 限制……）、代码质量、retry、latency、audit log、CPU 和内存、caching | §1 由 security 写；§2–§7 由 review 写 |
-| `CLAUDE.md` | 每个 session 自动读的工作规则 | `/Start` 填占位符 |
+| Mechanism | When it runs | What it does |
+|-----------|--------------|--------------|
+| `/AutomateWorkflow` Step 9 | Before each unit is committed | Writes the `Project.md` §8 progress row and the related doc updates first, then commits |
+| `record-progress` hook | After every `git commit` or `git merge` | If the commit didn't touch `Project.md`, reminds Claude to add the row. A `Progress: skip — <reason>` trailer opts out explicitly. Commits inside worktrees aren't checked; Commander records those at merge. |
+| `uncommitted-check` hook | Whenever Claude is about to end a turn | If there are uncommitted changes and no progress record, asks Claude to say which it is: to be recorded, still in progress, or not worth recording. It fires once per set of changes. |
+
+---
+
+## 7. The documents
+
+| File | Contents | Written by |
+|------|----------|------------|
+| `Start.md` | The user's original description (verbatim), the checklist, the Q&A log, the confirmed summary. **Never edited after locking**; later changes are appended as addenda. | `/Start` |
+| `Project.md` | Definition, goals, users, scope, traffic tier, how many domains and modules, roles (functionalities, uses, assets, access), mechanisms, timeline, decisions, open questions, and the **progress log** | `/Start` writes the first version; every workflow updates it |
+| `TechnicalSpec.md` | High-level to low-level design: architecture, every component and version, npm and other packages, workers and pools, server sizing, caching, environments | `/Start` writes the first version; each mechanism extends it |
+| `DatabaseSchema.md` | ERD (Mermaid), every table's metadata, relationships, purpose, PII classification, retention periods | The coder, in the same commit as any data change |
+| `Codebase.md` | The **measured** state of the code: security measures (rate limiting, input validation, IP restriction…), code quality, retries, latency, audit logging, CPU and memory, caching | §1 by security; §2–§7 by review |
+| `CLAUDE.md` | The working rules Claude reads automatically every session | `/Start` fills the placeholders |
 
 ---
 
 ## 8. Agents · Skills · Hooks
 
-**Agents**（`.claude/agents/`）
+**Agents** (`.claude/agents/`)
 
-| 文件 | Agent | Model | 能做什么 |
-|------|-------|-------|----------|
-| `plan.md` | planner | opus | 只读。TRIAGE 模式负责切分单元、登记路径、找冲突；PLAN 模式负责完整设计 |
-| `code.md` | coder | sonnet | 只写 code，不碰 git，不写测试 |
-| `review.md` | reviewer | opus | 只读，可跑 git diff 和测试。也有检查模式 |
-| `test.md` | tester | sonnet | 只写测试，发现 bug 回报但不修 |
-| `security.md` | security-reviewer | opus | 只读。最后一关，对照 S1–S15 |
+| File | Agent | Model | What it does |
+|------|-------|-------|--------------|
+| `plan.md` | planner | opus | Read-only. TRIAGE mode splits a request into units, claims paths, and finds conflicts; PLAN mode does the full design |
+| `code.md` | coder | sonnet | Writes code only: no git, no tests |
+| `review.md` | reviewer | opus | Read-only; may run `git diff` and the tests. Also has an inspection mode |
+| `test.md` | tester | sonnet | Writes tests only; reports bugs instead of fixing them |
+| `security.md` | security-reviewer | opus | Read-only. The last gate, checked against S1–S15 |
 
-**Commands**（`.claude/commands/`）：`/Start` · `/Commander` · `/AutomateWorkflow`
+**Commands** (`.claude/commands/`): `/Start` · `/Commander` · `/AutomateWorkflow`
 
-**Skills**（`.claude/skills/`）：
-- `stack-selection`：推荐 tech stack；
-- `system-design`：架构、并发、扩展顺序、cache、queue；
-- `data-modelling`：schema 规则和 ERD 流程；
-- `api-security`：API 安全控制。
+**Skills** (`.claude/skills/`):
+- `stack-selection`: recommends a tech stack;
+- `system-design`: architecture, concurrency, scaling order, caching, queues;
+- `data-modelling`: schema rules and the ERD routine;
+- `api-security`: API security controls.
 
-`examples/stack-skills/` 放的是特定技术的 skill 范例，目前有 Spring Boot。`/Start` 选定 stack 后，会把对应的范例复制进 `.claude/skills/`；没有现成范例就新建一个。
+`examples/stack-skills/` holds stack-specific skill examples (currently Spring Boot). Once `/Start`
+picks the stack, it copies the matching example into `.claude/skills/`, or creates a new one if none matches.
 
-**Hooks**（`.claude/hooks/`，在 `.claude/settings.json` 里设定）
+**Hooks** (`.claude/hooks/`, wired up in `.claude/settings.json`)
 
-| Hook | 事件 | 作用 |
-|------|------|------|
-| `start-gate.mjs` | UserPromptSubmit | 还没完成 intake 时，强制先跑 `/Start` |
-| `quality-gate.mjs` | 编辑文件之后 | Java 跑 `mvn`/`gradle compile`；TS/JS 跑 `tsc` 和 `eslint`；Python 跑 `ruff`。没装对应工具就跳过 |
-| `record-progress.mjs` | commit 或 merge 之后 | 检查有没有写进度记录 |
-| `uncommitted-check.mjs` | Stop | 检查没 commit 的工作要不要记录 |
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `start-gate.mjs` | UserPromptSubmit | Forces `/Start` first while the intake isn't locked |
+| `quality-gate.mjs` | After a file edit | Java: `mvn`/`gradle compile`; TS/JS: `tsc` and `eslint`; Python: `ruff`. Skipped if the tool isn't installed |
+| `record-progress.mjs` | After a commit or merge | Checks that a progress row was written |
+| `uncommitted-check.mjs` | Stop | Checks whether uncommitted work needs a record |
 
-`settings.json` 也**禁止**了 `git push --force`、`git reset --hard`、`git clean`，以及读取 `.env`。
-
----
-
-## 9. 配置：`.claude/pipeline.config.json`
-
-| 字段 | 意思 | 默认值 |
-|------|------|--------|
-| `projectName` | 项目名 | `/Start` 填入 |
-| `baseBranch` | 主分支 | `main` |
-| `approvers` | 哪些 GitHub 账号在 issue 上的 `/approve` 或 `approved` label 算数 | `/Start` 填入你的 `gh` 登入名 |
-| `maxWorktrees` | 最多同时开几个 worktree | `3` |
-| `sharedFiles` | 共用文件（同一时间只能有一个单元在改） | 常见的 manifest 和 lockfile |
-| `docs` | 由框架管理的文档 | 6 份 md |
-| `templateRepo` | 模板 repo 本身。在这个 repo 里，start-gate 不会触发 | `Carlo0919/AI_WorkingPipeline` |
+`settings.json` also **denies** `git push --force`, `git reset --hard`, `git clean`, and reading `.env`.
 
 ---
 
-## 10. 常见问题
+## 9. Configuration: `.claude/pipeline.config.json`
 
-**为什么 Commander 是 command，而不是 agent？**
-Claude Code 的 subagent 不能再叫出其他 subagent。Commander 必须派工，所以只能在主对话里运行。
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `projectName` | The project's name | filled by `/Start` |
+| `baseBranch` | The main branch | `main` |
+| `approvers` | GitHub accounts whose `/approve` comment or `approved` label counts | filled by `/Start` with your `gh` login |
+| `maxWorktrees` | The most worktrees open at once | `3` |
+| `sharedFiles` | Shared files (only one unit may change each one at a time) | common manifests and lockfiles |
+| `docs` | The docs the framework manages | the 6 Markdown files |
+| `templateRepo` | The template repo itself; the start gate doesn't fire inside it | `Carlo0919/AI_WorkingPipeline` |
 
-**我想跳过某一步？**
-小改动的规则写在 `/AutomateWorkflow` 的"When to skip steps"里。批准（Step 3）和 push（Step 10）这两关永远不会跳过。
+---
 
-**可以重新跑 `/Start` 吗？**
-可以，但锁定之后只会进入 addendum 模式，原始描述不会改。如果真的要从头来，手动把 `Start.md` 的状态改回 `⬜ NOT STARTED`。
+## 10. FAQ
 
-**worktree 和测试用的 DB 会自动删吗？**
-不会。删除是破坏性操作，Commander 会先问你。分支永远不删。
+**Why is Commander a command and not an agent?**
+In Claude Code, a subagent can't launch other subagents. Commander has to dispatch work, so it can only run in the main session.
 
-**怎么省 token？**
-- 小单元不派 planner；
-- 一个请求只做一次 triage；
-- agent 只拿到路径，不把文件内容贴给它；
-- 修完 bug 只重跑失败的那一关；
-- 能在主目录依序完成的，就不开 worktree。
+**Can I skip a step?**
+The rules for small changes are in `/AutomateWorkflow` under "When to skip steps". The approval gate (Step 3) and the push gate (Step 10) are never skipped.
+
+**Can I run `/Start` again?**
+Yes, but once the intake is locked it enters addendum mode only, and the original description stays as it is. To truly start over, change the status in `Start.md` back to `⬜ NOT STARTED` by hand.
+
+**Are worktrees and test databases deleted automatically?**
+No. Deleting them is destructive, so Commander asks you first. Branches are never deleted.
+
+**How do I keep token usage down?**
+- No planner for small units;
+- one triage call per request;
+- agents get paths, never pasted file contents;
+- after a fix, re-run only the gate that failed;
+- if it can be done sequentially in the main checkout, don't open a worktree.
 
 ---
 

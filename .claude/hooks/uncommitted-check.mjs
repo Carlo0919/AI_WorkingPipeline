@@ -32,7 +32,7 @@ try {
   process.exit(0);
 }
 
-const DOCS = /^(Start|Project|TechnicalSpec|DatabaseSchema|Codebase|CLAUDE|README)\.md$/;
+const DOCS = /^(Start|Project|TechnicalSpec|DatabaseSchema|Codebase|CLAUDE|README(\.[\w-]+)?)\.md$/;
 const paths = status.split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).split(" -> ").pop().replace(/^"|"$/g, ""));
 const work = paths.filter((p) => !DOCS.test(p) && !p.startsWith(".worktrees/") && !p.startsWith(".claude/state/"));
 if (work.length === 0) process.exit(0);
