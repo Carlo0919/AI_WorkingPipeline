@@ -1,0 +1,32 @@
+{
+  "projectName": null,
+  "baseBranch": "main",
+  "approvers": [],
+  "maxWorktrees": 3,
+  "sharedFiles": [
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "pom.xml",
+    "build.gradle",
+    "settings.gradle",
+    "pyproject.toml",
+    "requirements.txt",
+    "go.mod",
+    "Cargo.toml",
+    "docker-compose.yml",
+    ".env.example",
+    ".claude/settings.json",
+    ".claude/pipeline.config.json"
+  ],
+  "docs": [
+    "Start.md",
+    "Project.md",
+    "TechnicalSpec.md",
+    "DatabaseSchema.md",
+    "Codebase.md",
+    "CLAUDE.md"
+  ],
+  "templateRepo": "Carlo0919/AI_WorkingPipeline"
+}

@@ -1,0 +1,10 @@
+# AI_WorkingPipeline: per-machine state, worktrees, local settings
+.worktrees/
+.claude/state/
+.claude/settings.local.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
